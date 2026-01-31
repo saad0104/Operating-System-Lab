@@ -1,0 +1,202 @@
+% Experiment 19: File Allocation Strategy Simulator
+
+\section{Experiment 19: File Allocation Strategy Simulator}
+
+\subsection{Problem Statement}
+The objective is to implement \texttt{filealloc} to simulate disk block allocation.
+
+The tool must:
+\begin{itemize}
+    \item Read total blocks, free block list, and file requirements from stdin.
+    \item Simulate \textbf{Contiguous} (first fit run), \textbf{Linked} (chain), and \textbf{Indexed} (index + data) allocation.
+    \item Output the block mapping for each file or \verb|FAIL|.
+    \item Reset the disk state between algorithms.
+\end{itemize}
+
+\subsection{Source Code}
+\begin{lstlisting}[language=C, caption={filealloc.c}]
+// ########## File Allocation Strategy Simulation ##########
+// filealloc
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+
+#define E_INPUT "E_INPUT"
+#define E_RANGE "E_RANGE"
+#define E_DUPBLOCK "E_DUPBLOCK"
+
+void print_error(const char *code, const char *msg) {
+    fprintf(stderr, "ERROR: %s: %s\n", code, msg);
+    exit(1);
+}
+
+// Comparison for sorting free blocks
+int cmp_int(const void *a, const void *b) {
+    return (*(int *)a - *(int *)b);
+}
+
+typedef struct {
+    char name[32];
+    int size;
+} FileReq;
+
+void reset_disk(bool *disk, int N, int *free_blocks, int F) {
+    for (int i = 0; i < N; i++) disk[i] = true; 
+    for (int i = 0; i < F; i++) {
+        if (free_blocks[i] >= 0 && free_blocks[i] < N) {
+            disk[free_blocks[i]] = false; 
+        }
+    }
+}
+
+void solve_contiguous(int N, bool *disk, FileReq *files, int M) {
+    printf("ALG CONTIGUOUS\n");
+    for (int i = 0; i < M; i++) {
+        int best_start = -1;
+        // Find first run of 'size' free blocks
+        for (int start = 0; start <= N - files[i].size; start++) {
+            bool fits = true;
+            for (int k = 0; k < files[i].size; k++) {
+                if (disk[start + k]) {
+                    fits = false;
+                    break;
+                }
+            }
+            if (fits) {
+                best_start = start;
+                break; 
+            }
+        }
+
+        if (best_start != -1) {
+            printf("FILE %s -> START %d LEN %d\n", files[i].name, best_start, files[i].size);
+            for (int k = 0; k < files[i].size; k++) disk[best_start + k] = true;
+        } else {
+            printf("FILE %s -> FAIL\n", files[i].name);
+        }
+    }
+}
+
+void solve_linked(int N, bool *disk, FileReq *files, int M) {
+    printf("ALG LINKED\n");
+    for (int i = 0; i < M; i++) {
+        int needed = files[i].size;
+        int allocated[needed];
+        int count = 0;
+
+        // Greedy allocation of smallest available blocks
+        for (int b = 0; b < N && count < needed; b++) {
+            if (!disk[b]) {
+                allocated[count++] = b;
+            }
+        }
+
+        if (count == needed) {
+            printf("FILE %s -> CHAIN", files[i].name);
+            for (int k = 0; k < count; k++) {
+                printf("%s%d", (k == 0 ? " " : "->"), allocated[k]);
+                disk[allocated[k]] = true;
+            }
+            printf("\n");
+        } else {
+            printf("FILE %s -> FAIL\n", files[i].name);
+        }
+    }
+}
+
+void solve_indexed(int N, bool *disk, FileReq *files, int M) {
+    printf("ALG INDEXED\n");
+    for (int i = 0; i < M; i++) {
+        int needed = files[i].size + 1; 
+        int allocated[needed];
+        int count = 0;
+
+        for (int b = 0; b < N && count < needed; b++) {
+            if (!disk[b]) {
+                allocated[count++] = b;
+            }
+        }
+
+        if (count == needed) {
+        // Index block is the first one allocated (smallest ID)
+            int index_block = allocated[0];
+            printf("FILE %s -> INDEX %d DATA", files[i].name, index_block);
+            for (int k = 1; k < count; k++) {
+                printf("%s%d", (k == 1 ? " " : ","), allocated[k]);
+            }
+            printf("\n");
+        // Mark occupied
+            for (int k = 0; k < count; k++) disk[allocated[k]] = true;
+        } else {
+            printf("FILE %s -> FAIL\n", files[i].name);
+        }
+    }
+}
+
+int main() {
+    int N, F, M;
+    
+    // Read Total Blocks
+    if (scanf("%d", &N) != 1) return 0;
+    if (N < 1 || N > 10000) print_error(E_RANGE, "N 1..10000");
+
+    // Read Free Blocks
+    if (scanf("%d", &F) != 1) print_error(E_INPUT, "missing F");
+    int *free_blocks = malloc(sizeof(int) * F);
+    for (int i = 0; i < F; i++) {
+        if (scanf("%d", &free_blocks[i]) != 1) print_error(E_INPUT, "bad free block");
+        if (free_blocks[i] < 0 || free_blocks[i] >= N) print_error(E_RANGE, "block out of range");
+    }
+    
+    // Sort free blocks for deterministic allocation (smallest ID first)
+    qsort(free_blocks, F, sizeof(int), cmp_int);
+
+    // Check duplicates
+    for (int i = 0; i < F - 1; i++) {
+        if (free_blocks[i] == free_blocks[i+1]) print_error(E_DUPBLOCK, "free block list must contain unique IDs");
+    }
+
+    // Read Files
+    if (scanf("%d", &M) != 1) print_error(E_INPUT, "missing M");
+    FileReq *files = malloc(sizeof(FileReq) * M);
+    for (int i = 0; i < M; i++) {
+        if (scanf("%s %d", files[i].name, &files[i].size) != 2) print_error(E_INPUT, "bad file spec");
+        if (files[i].size < 1) print_error(E_INPUT, "bad file size");
+    }
+
+    // Simulation State
+    bool *disk = malloc(sizeof(bool) * N);
+
+    reset_disk(disk, N, free_blocks, F);
+    solve_contiguous(N, disk, files, M);
+
+    reset_disk(disk, N, free_blocks, F);
+    solve_linked(N, disk, files, M);
+
+    reset_disk(disk, N, free_blocks, F);
+    solve_indexed(N, disk, files, M);
+
+    free(free_blocks);
+    free(files);
+    free(disk);
+    return 0;
+}
+\end{lstlisting}
+
+\subsection{Sample Input and Output}
+
+\textbf{Case 1:}
+\begin{verbatim}
+$ printf "10\n6\n0 1 2 5 6 9\n2\nA 2\nB 3" | ./filealloc
+ALG CONTIGUOUS
+FILE A -> START 0 LEN 2
+FILE B -> FAIL
+ALG LINKED
+FILE A -> CHAIN 0->1
+FILE B -> CHAIN 2->5->6
+ALG INDEXED
+FILE A -> INDEX 0 DATA 1,2
+FILE B -> FAIL
+\end{verbatim}

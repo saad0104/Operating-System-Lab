@@ -1,0 +1,162 @@
+% Experiment 2: POSIX File Copy
+
+\section{Experiment 2: POSIX File Copy with open/read/write}
+
+\subsection{Problem Statement}
+The objective is to implement a CLI tool named \texttt{fdcopy} that copies a byte stream using low-level file descriptor I/O.
+
+The tool must:
+\begin{itemize}
+    \item Accept inputs: \verb|--src <path>| and \verb|--dst <path>| (required).
+    \item Optional inputs: \verb|--buf <N>| and \verb|--force|.
+    \item Read from STDIN if source is \verb|-|.
+    \item Compute the IEEE 802.3 CRC32 checksum of copied bytes.
+    \item Prevent overwriting destination unless \verb|--force| is used.
+    \item Output format: \verb|OK: COPIED <bytes> BYTES| and \verb|OK: CRC32 <hex>|.
+\end{itemize}
+
+\subsection{Source Code}
+\begin{lstlisting}[language=C, caption={fdcopy.c}]
+// ###### PSOIX O/R/W ##########
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <errno.h>
+#include <stdint.h>
+
+// Error codes
+#define E_USAGE "E_USAGE"
+#define E_OPEN_SRC "E_OPEN_SRC"
+#define E_OPEN_DST "E_OPEN_DST"
+#define E_EXISTS "E_EXISTS"
+#define E_READ "E_READ"
+#define E_WRITE "E_WRITE"
+#define E_CLOSE "E_CLOSE"
+#define E_RANGE "E_RANGE"
+
+// Printing Errors
+void print_error(const char *code, const char *msg) {
+    fprintf(stderr, "ERROR: %s: %s\n", code, msg);
+    exit(1);
+}
+
+// CRC32 implementation, code outsourced
+uint32_t crc32_update(uint32_t crc, const unsigned char *p, size_t len) {
+    crc = ~crc;
+    while (len--) {
+        crc ^= *p++;
+        for (int i = 0; i < 8; i++)
+            crc = (crc >> 1) ^ ((crc & 1) ? 0xEDB88320 : 0);
+    }
+    return ~crc;
+}
+
+int main(int argc, char *argv[]) {
+    char *src_path = NULL;
+    char *dst_path = NULL;
+    int buffer_size = 4096;
+    int force = 0;
+
+    // Parsing arguments
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--src") == 0) {
+            if (i + 1 < argc) src_path = argv[++i];
+        } else if (strcmp(argv[i], "--dst") == 0) {
+            if (i + 1 < argc) dst_path = argv[++i];
+        } else if (strcmp(argv[i], "--buf") == 0) {
+            if (i + 1 < argc) {
+                buffer_size = atoi(argv[++i]);
+                if (buffer_size < 1 || buffer_size > 1048576) {
+                    print_error(E_RANGE, "buffer size 1..1048576");
+                }
+            }
+        } else if (strcmp(argv[i], "--force") == 0) {
+            force = 1;
+        }
+    }
+
+    if (!src_path || !dst_path) {
+        print_error(E_USAGE, "missing --src or --dst");
+    }
+
+// Opening src file
+    int fd_in;
+    if (strcmp(src_path, "-") == 0) {
+        fd_in = STDIN_FILENO;
+    } else {
+        fd_in = open(src_path, O_RDONLY);
+        if (fd_in < 0) print_error(E_OPEN_SRC, strerror(errno));
+    }
+
+    // Opening dest file
+    int flags = O_WRONLY | O_CREAT;
+    if (!force) {
+        flags |= O_EXCL;
+    } else {
+        flags |= O_TRUNC;
+    }
+
+    int fd_out = open(dst_path, flags, 0644);
+    if (fd_out < 0) {
+        if (errno == EEXIST) {
+            print_error(E_EXISTS, "destination already exists (use --force)");
+        } else {
+            print_error(E_OPEN_DST, strerror(errno));
+        }
+    }
+
+    // Copy loop
+    unsigned char *buf = malloc(buffer_size);
+    if (!buf) print_error(E_USAGE, "memory allocation failed");
+
+    ssize_t n_read;
+    size_t total_bytes = 0;
+    uint32_t crc = 0;
+
+    // Read until end of file(EOF)
+    while ((n_read = read(fd_in, buf, buffer_size)) > 0) {
+        crc = crc32_update(crc, buf, n_read);
+        
+        char *ptr = (char*)buf;
+        ssize_t n_write_total = 0;
+        
+        // Partial writes
+        while (n_write_total < n_read) {
+            ssize_t res = write(fd_out, ptr + n_write_total, n_read - n_write_total);
+            if (res < 0) print_error(E_WRITE, strerror(errno));
+            n_write_total += res;
+        }
+        total_bytes += n_read;
+    }
+
+    if (n_read < 0) print_error(E_READ, strerror(errno));
+
+    // Cleaning
+    free(buf);
+    if (fd_in != STDIN_FILENO) close(fd_in);
+    if (close(fd_out) < 0) print_error(E_CLOSE, strerror(errno));
+
+    // Output
+    printf("OK: COPIED %zu BYTES\n", total_bytes);
+    printf("OK: CRC32 %08x\n", crc);
+
+    return 0;
+}
+\end{lstlisting}
+
+\subsection{Sample Input and Output}
+
+\textbf{Case 1:}
+\begin{verbatim}
+$ ./fdcopy --src source.txt --dst dest.txt
+OK: COPIED 3 BYTES
+OK: CRC32 352441c2
+\end{verbatim}
+
+\textbf{Case 2}
+\begin{verbatim}
+$ ./fdcopy --src - --dst out/q02.bin
+ERROR: E_EXISTS: destination already exists (use --force)
+\end{verbatim}

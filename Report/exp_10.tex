@@ -1,0 +1,185 @@
+% Experiment 10: Bounded Buffer Producer-Consumer
+
+\section{Experiment 10: Bounded Buffer Producer-Consumer}
+
+\subsection{Problem Statement}
+The objective is to implement \texttt{pcbuf}, a bounded buffer simulation using semaphores.
+
+The tool must:
+\begin{itemize}
+    \item Accept buffer size, producer count, consumer count, and total items.
+    \item Producers generate items \verb|1..m|.
+    \item Consumers sum the consumed values.
+    \item Ensure exact production and consumption of \verb|m| items.
+    \item Output produced count, consumed count, and the final sum.
+\end{itemize}
+
+\subsection{Source Code}
+\begin{lstlisting}[language=C, caption={pcbuf.c}]
+// Bounded Buffer Producer Consumer with Semaphores
+// pcbuf
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <pthread.h>
+#include <semaphore.h>
+
+// error messages
+#define E_USAGE "E_USAGE"
+#define E_RANGE "E_RANGE"
+#define E_THREAD "E_THREAD"
+#define E_SEM "E_SEM"
+#define E_MUTEX "E_MUTEX"
+#define E_INVARIANT "E_INVARIANT"
+
+// Global config
+int buf_size = 0;
+int num_producers = 0;
+int num_consumers = 0;
+int max_items = 0;
+
+int *buffer;
+int in = 0, out = 0;
+int next_produce_item = 1;
+long long produced_count = 0;
+long long consumed_count = 0;
+long long final_sum = 0;
+
+sem_t empty;
+sem_t full;
+pthread_mutex_t buf_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t item_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t sum_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void print_error(const char *code, const char *msg) {
+    fprintf(stderr, "ERROR: %s: %s\n", code, msg);
+    exit(1);
+}
+
+void* producer(void* arg) {
+    while (1) {
+        // Acquire unique Item ID
+        pthread_mutex_lock(&item_lock);
+        int item = next_produce_item;
+        if (item > max_items) {
+            pthread_mutex_unlock(&item_lock);
+            break;
+        }
+        next_produce_item++;
+        produced_count++;
+        pthread_mutex_unlock(&item_lock);
+
+        // Put into buffer
+        sem_wait(&empty);
+        pthread_mutex_lock(&buf_lock);
+        buffer[in] = item;
+        in = (in + 1) % buf_size;
+        pthread_mutex_unlock(&buf_lock);
+        sem_post(&full);
+    }
+    return NULL;
+}
+
+void* consumer(void* arg) {
+    while (1) {
+        // Get from buffer
+        sem_wait(&full);
+        pthread_mutex_lock(&buf_lock);
+        int item = buffer[out];
+        out = (out + 1) % buf_size;
+        pthread_mutex_unlock(&buf_lock);
+        sem_post(&empty);
+
+        // Check for Sentinel (0 or -1 indicates termination)
+        if (item == -1) {
+            break;
+        }
+
+        // Process item
+        pthread_mutex_lock(&sum_lock);
+        final_sum += item;
+        consumed_count++;
+        pthread_mutex_unlock(&sum_lock);
+    }
+    return NULL;
+}
+
+int main(int argc, char *argv[]) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--buf") == 0) buf_size = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--producers") == 0) num_producers = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--consumers") == 0) num_consumers = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--items") == 0) max_items = atoi(argv[++i]);
+    }
+
+    // Validation
+    if (buf_size < 1 || buf_size > 1024) print_error(E_RANGE, "buf must be in 1..1024");
+    if (num_producers < 1 || num_producers > 16) print_error(E_RANGE, "producers must be in 1..16");
+    if (num_consumers < 1 || num_consumers > 16) print_error(E_RANGE, "consumers must be in 1..16");
+    if (max_items < 1 || max_items > 100000) print_error(E_RANGE, "items must be in 1..100000");
+
+    // Initialization
+    buffer = malloc(sizeof(int) * buf_size);
+    if (sem_init(&empty, 0, buf_size) != 0) print_error(E_SEM, "init empty failed");
+    if (sem_init(&full, 0, 0) != 0) print_error(E_SEM, "init full failed");
+
+    pthread_t p_threads[16], c_threads[16];
+
+    // Start Consumers
+    for (int i = 0; i < num_consumers; i++) 
+        pthread_create(&c_threads[i], NULL, consumer, NULL);
+
+    // Start Producers
+    for (int i = 0; i < num_producers; i++) 
+        pthread_create(&p_threads[i], NULL, producer, NULL);
+
+    // Join Producers
+    for (int i = 0; i < num_producers; i++) 
+        pthread_join(p_threads[i], NULL);
+
+    // Terminate Consumers
+    for (int i = 0; i < num_consumers; i++) {
+        sem_wait(&empty);
+        pthread_mutex_lock(&buf_lock);
+        buffer[in] = -1;
+        in = (in + 1) % buf_size;
+        pthread_mutex_unlock(&buf_lock);
+        sem_post(&full);
+    }
+
+    // Join Consumers
+    for (int i = 0; i < num_consumers; i++) 
+        pthread_join(c_threads[i], NULL);
+
+    // Output
+    printf("OK: PRODUCED %lld\n", produced_count);
+    printf("OK: CONSUMED %lld\n", consumed_count);
+    printf("OK: SUM %lld\n", final_sum);
+
+    // Check
+    if (produced_count != consumed_count || produced_count != max_items) {
+        fprintf(stderr, "ERROR: %s: produced/consumed mismatch\n", E_INVARIANT);
+        exit(1);
+    }
+
+    free(buffer);
+    return 0;
+}
+\end{lstlisting}
+
+\subsection{Sample Input and Output}
+
+\textbf{Case 1:}
+\begin{verbatim}
+$ ./pcbuf --buf 4 --producers 2 --consumers 2 --items 10
+OK: PRODUCED 10
+OK: CONSUMED 10
+OK: SUM 55
+\end{verbatim}
+
+\textbf{Case 2:}
+\begin{verbatim}
+$ ./pcbuf --buf 0 --producers 1 --consumers 1 --items 10
+ERROR: E_RANGE: buf must be in 1..1024
+\end{verbatim}

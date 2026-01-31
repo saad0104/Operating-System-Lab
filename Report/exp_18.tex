@@ -1,0 +1,206 @@
+% Experiment 18: Page Replacement Simulator
+
+\section{Experiment 18: Page Replacement Simulator}
+
+\subsection{Problem Statement}
+The objective is to implement \texttt{pagerepl} to simulate FIFO, LRU, and OPT replacement.
+
+The tool must:
+\begin{itemize}
+    \item Accept \verb|--frames <F>|.
+    \item Read reference string length and page numbers from stdin.
+    \item Simulate the three algorithms independently.
+    \item Output fault counts and final frame contents.
+\end{itemize}
+
+\subsection{Source Code}
+\begin{lstlisting}[language=C, caption={pagerepl.c}]
+// Page Replacement Simulator
+//pagerepl
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define E_INPUT "E_INPUT"
+#define E_RANGE "E_RANGE"
+
+void print_error(const char *code, const char *msg) {
+    fprintf(stderr, "ERROR: %s: %s\n", code, msg);
+    exit(1);
+}
+
+int lookup(int *frames, int F, int page) {
+    for (int i = 0; i < F; i++) {
+        if (frames[i] == page) return i;
+    }
+    return -1;
+}
+
+void print_final(int *frames, int F) {
+    printf("OK: FINAL");
+    for (int i = 0; i < F; i++) printf(" %d", frames[i]);
+    printf("\n");
+}
+
+void solve_fifo(int *pages, int L, int F) {
+    printf("ALG FIFO\n");
+    int *frames = malloc(sizeof(int) * F);
+    for(int i=0; i<F; i++) frames[i] = -1;
+    
+    int faults = 0;
+    int head = 0;
+
+    for (int i = 0; i < L; i++) {
+        int page = pages[i];
+        if (lookup(frames, F, page) == -1) {
+            faults++;
+            frames[head] = page;
+            head = (head + 1) % F;
+        }
+    }
+    printf("OK: FAULTS %d\n", faults);
+    print_final(frames, F);
+    free(frames);
+}
+
+void solve_lru(int *pages, int L, int F) {
+    printf("ALG LRU\n");
+    int *frames = malloc(sizeof(int) * F);
+    int *last_used = malloc(sizeof(int) * F); 
+    for(int i=0; i<F; i++) { frames[i] = -1; last_used[i] = -1; }
+
+    int faults = 0;
+    int current_time = 0;
+
+    for (int i = 0; i < L; i++) {
+        int page = pages[i];
+        int idx = lookup(frames, F, page);
+        current_time++;
+
+        if (idx != -1) {
+            last_used[idx] = current_time;
+        } else {
+            faults++;
+            int victim = -1;
+            
+            for (int j = 0; j < F; j++) {
+                if (frames[j] == -1) {
+                    victim = j;
+                    break;
+                }
+            }
+
+            if (victim == -1) {
+                int min_time = 2000000000;
+                for (int j = 0; j < F; j++) {
+                    if (last_used[j] < min_time) {
+                        min_time = last_used[j];
+                        victim = j;
+                    }
+              
+                }
+            }
+            
+            frames[victim] = page;
+            last_used[victim] = current_time;
+        }
+    }
+    printf("OK: FAULTS %d\n", faults);
+    print_final(frames, F);
+    free(frames);
+    free(last_used);
+}
+
+void solve_opt(int *pages, int L, int F) {
+    printf("ALG OPT\n");
+    int *frames = malloc(sizeof(int) * F);
+    for(int i=0; i<F; i++) frames[i] = -1;
+
+    int faults = 0;
+
+    for (int i = 0; i < L; i++) {
+        int page = pages[i];
+        if (lookup(frames, F, page) == -1) {
+            faults++;
+            int victim = -1;
+
+            for (int j = 0; j < F; j++) {
+                if (frames[j] == -1) {
+                    victim = j;
+                    break;
+                }
+            }
+
+            if (victim == -1) {
+                int max_dist = -1;
+                
+                for (int j = 0; j < F; j++) {
+                    int dist = 2000000000;
+                    for (int k = i + 1; k < L; k++) {
+                        if (pages[k] == frames[j]) {
+                            dist = k;
+                            break;
+                        }
+                    }
+                    
+                    if (dist > max_dist) {
+                        max_dist = dist;
+                        victim = j;
+                    }
+                  
+                }
+            }
+            frames[victim] = page;
+        }
+    }
+    printf("OK: FAULTS %d\n", faults);
+    print_final(frames, F);
+    free(frames);
+}
+
+int main(int argc, char *argv[]) {
+    int F = 0;
+    if (argc > 2 && strcmp(argv[1], "--frames") == 0) F = atoi(argv[2]);
+    if (F < 1 || F > 64) print_error(E_RANGE, "frames must be 1..64");
+
+    int L;
+    if (scanf("%d", &L) != 1) return 0; 
+    if (L < 0) print_error(E_INPUT, "bad length");
+
+    int *pages = malloc(sizeof(int) * L);
+    for (int i = 0; i < L; i++) {
+        if (scanf("%d", &pages[i]) != 1) print_error(E_INPUT, "bad page");
+        if (pages[i] < 0) print_error(E_RANGE, "page numbers must be >= 0");
+    }
+
+    solve_fifo(pages, L, F);
+    solve_lru(pages, L, F);
+    solve_opt(pages, L, F);
+
+    free(pages);
+    return 0;
+}
+\end{lstlisting}
+
+\subsection{Sample Input and Output}
+
+\textbf{Case 1:}
+\begin{verbatim}
+$ printf "12\n1 2 3 2 4 1 2 5 2 1 2 3" | ./pagerepl --frames 3
+ALG FIFO
+OK: FAULTS 8
+OK: FINAL 5 3 2
+ALG LRU
+OK: FAULTS 7
+OK: FINAL 3 2 1
+ALG OPT
+OK: FAULTS 6
+OK: FINAL 3 2 5
+\end{verbatim}
+
+\textbf{Case 2:}
+\begin{verbatim}
+$ printf '2\n1 -1' | ./pagerepl --frames 2
+ERROR: E_RANGE: page numbers must be >= 0
+\end{verbatim}

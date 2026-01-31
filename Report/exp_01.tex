@@ -1,0 +1,126 @@
+% Experiment 1: UNIX Permission and umask Calculator
+
+\section{Experiment 1: UNIX Permission and umask Calculator}
+
+\subsection{Problem Statement}
+The objective is to implement a CLI tool named \texttt{permcalc} that simulates how UNIX permissions are calculated when applying a \texttt{umask}.
+
+The tool must:
+\begin{itemize}
+    \item Accept inputs: \verb|--mode <octal>| (required) and optional \verb|--umask <octal>|.
+    \item Validate that \verb|<octal>| is exactly 4 digits from 0000 to 0777.
+    \item Compute the effective permission: \verb|effective_mode = mode & (~umask)|.
+    \item Output two lines on success: \verb|OK: EFFECTIVE <octal>| and \verb|OK: SYMBOLIC <rwxrwxrwx>|.
+    \item Handle errors using specific codes: \verb|E_USAGE|, \verb|E_OCTAL|, \verb|E_RANGE|.
+\end{itemize}
+
+\subsection{Source Code}
+\begin{lstlisting}[language=C, caption={permcalc.c}]
+// #####  Permission Calculation  ######
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+// Error codes 
+#define E_USAGE "E_USAGE"
+#define E_OCTAL "E_OCTAL"
+#define E_RANGE "E_RANGE"
+
+// Error Printing
+void print_error(const char *code, const char *msg) {
+    fprintf(stderr, "ERROR: %s: %s\n", code, msg);
+    exit(1);
+}
+
+// Validates 4 digit octal
+void validate_octal(const char *str) {
+    if (strlen(str) != 4) {
+        print_error(E_OCTAL, "mode must be 4-digit octal (0000-0777)");
+    }
+    for (int i = 0; i < 4; i++) {
+        if (str[i] < '0' || str[i] > '7') {
+            print_error(E_OCTAL, "mode must be 4-digit octal (0000-0777)");
+        }
+    }
+}
+
+// Converting Octal String to Int
+int parse_octal(const char *str) {
+    validate_octal(str);
+    int val = strtol(str, NULL, 8);
+    if (val < 0 || val > 0777) {
+        print_error(E_RANGE, "value out of range 0000-0777");
+    }
+    return val;
+}
+
+// Generating rwxrwxrwx string
+void get_symbolic(int mode, char *buffer) {
+    const char *perms = "rwx";
+    for (int i = 0; i < 9; i++) {
+        if (mode & (1 << (8 - i))) {
+            buffer[i] = perms[i % 3];
+        } else {
+            buffer[i] = '-';
+        }
+    }
+    buffer[9] = '\0';
+}
+
+int main(int argc, char *argv[]) {
+    char *mode_str = NULL;
+    char *umask_str = NULL;
+
+    // Parsing CLI arguments
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--mode") == 0) {
+            if (i + 1 < argc) mode_str = argv[++i];
+            else print_error(E_USAGE, "missing value for --mode");
+        } else if (strcmp(argv[i], "--umask") == 0) {
+            if (i + 1 < argc) umask_str = argv[++i];
+            else print_error(E_USAGE, "missing value for --umask");
+        } else {
+            // Strict usage checking
+             print_error(E_USAGE, "unknown argument");
+        }
+    }
+
+    if (!mode_str) {
+        print_error(E_USAGE, "missing required --mode");
+    }
+
+    int mode = parse_octal(mode_str);
+    int umask = 0000; // Taking this value as default
+    if (umask_str) {
+        umask = parse_octal(umask_str);
+    }
+    // Masking with 0777 to avoid integer sign extension issues
+    int effective = (mode & (~umask)) & 0777;
+
+    char symbolic[10];
+    get_symbolic(effective, symbolic);
+
+    // Output success message
+    printf("OK: EFFECTIVE %04o\n", effective);
+    printf("OK: SYMBOLIC %s\n", symbolic);
+
+    return 0;
+}
+\end{lstlisting}
+
+\subsection{Sample Input and Output}
+
+\textbf{Case 1}
+\begin{verbatim}
+$ ./exp_01 --mode 0644 --umask 002 
+OK: EFFECTIVE 0644
+OK: SYMBOLIC rw-r--r--
+\end{verbatim}
+
+\textbf{Case 2}
+\begin{verbatim}
+$ ./exp_01 --mode 644 --umask 002 
+ERROR: E_OCTAL: mode must be 4-digit octal (0000-0777)
+\end{verbatim}

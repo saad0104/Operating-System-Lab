@@ -1,0 +1,118 @@
+\documentclass[a4paper,12pt]{article}
+
+% --- 1. PACKAGES ---
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}     % Controls margins
+\usepackage{fancyhdr}
+
+% 1. Activate fancy headers
+\pagestyle{fancy}
+
+% 2. Clear default settings
+\fancyhf{} 
+
+% 3. Set the custom content
+% \lhead = Left Head, \rhead = Right Head, \cfoot = Center Foot
+\lhead{CSE 512}  % <-- Replace with your Course
+\rhead{ID : 23701045}           % <-- Replace with your Name
+\cfoot{\thepage}            % Keep page numbers at the bottom center
+
+% 4. Remove the horizontal line if you prefer (optional)
+% \renewcommand{\headrulewidth}{0pt} 
+
+\usepackage{titlesec}     % Customizes section titles
+\newcommand{\sectionbreak}{\clearpage}
+\usepackage{hyperref}     % Adds clickable links and table of contents
+\usepackage{graphicx}     % Allows image insertion
+\usepackage{listings}     % ESSENTIAL: For formatting source code
+\usepackage{xcolor}       % For defining code colors
+\usepackage{array}        % Used for the table in your cover page
+
+% --- 2. MARGIN SETTINGS ---
+\geometry{
+    left=25mm,
+    right=25mm,
+    top=25mm,
+    bottom=25mm
+}
+
+% --- 3. CODE HIGHLIGHTING SETUP (VS Code Style) ---
+% Defining colors
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+% Setting the style
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize, % Typewriter font
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=4
+}
+
+% Apply the style globally
+\lstset{style=mystyle}
+
+% --- 4. DOCUMENT METADATA ---
+% (Used if no cover page is provided, but we are using your custom cover)
+\title{UNIX Programming Lab Report}
+\author{Your Name}
+\date{\today}
+
+% --- 5. DOCUMENT START ---
+\begin{document}
+
+% --- A. INSERT COVER PAGE ---
+% This pulls in the code from 'cover.tex'
+\input{cover} 
+
+% --- B. TABLE OF CONTENTS ---
+\newpage
+\tableofcontents
+\newpage
+
+% --- C. LAB REPORT PROBLEMS ---
+% As you finish more problems, create new .tex files and uncomment lines below
+
+% Problem 1: Umask Calculator
+\input{exp_01}
+\input{exp_02}
+\input{exp_03}
+\input{exp_04}
+\input{exp_05}
+\input{exp_06}
+\input{exp_07}
+\input{exp_08}
+\input{exp_09}
+\input{exp_10}
+\input{exp_11}
+\input{exp_12}
+\input{exp_13}
+\input{exp_14}
+\input{exp_15}
+\input{exp_16}
+\input{exp_17}
+\input{exp_18}
+\input{exp_19}
+\input{exp_20}
+
+% Problem 2: (Example for future)
+% \input{problem2}
+
+% Problem 3: (Example for future)
+% \input{problem3}
+
+\end{document}

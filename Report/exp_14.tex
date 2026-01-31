@@ -1,0 +1,149 @@
+% Experiment 14: Deadlock Avoidance (Banker's Algorithm)
+
+\section{Experiment 14: Deadlock Avoidance using Banker's Algorithm}
+
+\subsection{Problem Statement}
+The objective is to implement \texttt{banker}, a tool that determines if a system state is safe using the Banker's Algorithm.
+
+The tool must:
+\begin{itemize}
+    \item Read process count, resource count, Allocation matrix, Max matrix, and Available vector from stdin.
+    \item Validate that Allocation $\le$ Max.
+    \item Determine if a safe sequence exists.
+    \item If multiple safe sequences exist, choose the lexicographically smallest process index at each step.
+    \item Output \verb|OK: SAFE| and the sequence, or \verb|OK: UNSAFE|.
+\end{itemize}
+
+\subsection{Source Code}
+\begin{lstlisting}[language=C, caption={banker.c}]
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+
+#define E_INPUT "E_INPUT"
+#define E_RANGE "E_RANGE"
+#define E_INVALID "E_INVALID"
+
+void print_error(const char *code, const char *msg) {
+    fprintf(stderr, "ERROR: %s: %s\n", code, msg);
+    exit(1);
+}
+
+int main() {
+    int P, R;
+    if (scanf("%d %d", &P, &R) != 2) return 0; // Empty input handling
+
+    if (P < 1 || R < 1) print_error(E_INPUT, "P and R must be positive");
+
+    int alloc[P][R];
+    int max[P][R];
+    int avail[R];
+    int need[P][R];
+
+    // Read Allocation
+    for (int i = 0; i < P; i++) {
+        for (int j = 0; j < R; j++) {
+            if (scanf("%d", &alloc[i][j]) != 1) print_error(E_INPUT, "missing data");
+            if (alloc[i][j] < 0) print_error(E_RANGE, "negative value");
+        }
+    }
+
+    // Read Max
+    for (int i = 0; i < P; i++) {
+        for (int j = 0; j < R; j++) {
+            if (scanf("%d", &max[i][j]) != 1) print_error(E_INPUT, "missing data");
+            if (max[i][j] < 0) print_error(E_RANGE, "negative value");
+            
+            // Check Alloc <= Max
+            if (alloc[i][j] > max[i][j]) {
+                print_error(E_INVALID, "allocation must be <= max");
+            }
+            need[i][j] = max[i][j] - alloc[i][j];
+        }
+    }
+
+    for (int j = 0; j < R; j++) {
+        if (scanf("%d", &avail[j]) != 1) print_error(E_INPUT, "missing data");
+        if (avail[j] < 0) print_error(E_RANGE, "negative value");
+    }
+
+    // Banker's Algorithm
+    int work[R];
+    for(int j=0; j<R; j++) work[j] = avail[j];
+
+    bool finish[P];
+    for(int i=0; i<P; i++) finish[i] = false;
+
+    int seq[P];
+    int seq_idx = 0;
+
+    int completed = 0;
+    while (completed < P) {
+        bool found = false;
+        
+        // Iterate 0..P-1 to ensure lexicographically smallest sequence
+        for (int i = 0; i < P; i++) {
+            if (!finish[i]) {
+                bool possible = true;
+                for (int j = 0; j < R; j++) {
+                    if (need[i][j] > work[j]) {
+                        possible = false;
+                        break;
+                    }
+                }
+
+                if (possible) {
+                    // Execute process i
+                    for (int j = 0; j < R; j++) {
+                        work[j] += alloc[i][j];
+                    }
+                    finish[i] = true;
+                    seq[seq_idx++] = i;
+                    completed++;
+                    found = true;
+                    // Restart search from process 0 to maintain lexicographical order requirement
+                    break; 
+                }
+            }
+        }
+
+        if (!found) {
+            break; // Deadlock/Unsafe
+        }
+    }
+
+    if (completed == P) {
+        printf("OK: SAFE\n");
+        printf("OK: SEQ");
+        for (int i = 0; i < P; i++) {
+            printf(" %d", seq[i]);
+        }
+        printf("\n");
+    } else {
+        printf("OK: UNSAFE\n");
+    }
+
+    return 0;
+}
+\end{lstlisting}
+
+\subsection{Sample Input and Output}
+
+\textbf{Case 1:}
+\begin{verbatim}
+$ ./banker < banker_input.txt
+OK: SAFE
+OK: SEQ 0 1 2
+\end{verbatim}
+\textbf{Case 2:}
+\begin{verbatim}
+$ printf "3 2\n1 0\n0 1\n1 1\n2 0\n1 2\n1 1\n1 1" | ./banker
+OK: SAFE
+OK: SEQ 0 1 2
+\end{verbatim}
+
+\textbf{Case 3:}
+\begin{verbatim}
+$ printf '2 1\n1\n0\n0\n0\n0' | ./banker
+ERROR: E_INVALID: allocation must be <= max
+\end{verbatim}

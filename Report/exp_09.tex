@@ -1,0 +1,121 @@
+% Experiment 9: Threaded Deterministic Reducer
+
+\section{Experiment 9: Threaded Deterministic Reducer}
+
+\subsection{Problem Statement}
+The objective is to implement \texttt{thrsum} to sum integers 1 to N using multiple threads.
+
+The tool must:
+\begin{itemize}
+    \item Accept inputs \verb|--threads <t>| and \verb|--n <N>|.
+    \item Partition the range \verb|[1, N]| deterministically among threads.
+    \item Use a mutex to safely update the shared total.
+    \item Output \verb|OK: SUM <value>|.
+\end{itemize}
+
+\subsection{Source Code}
+\begin{lstlisting}[language=C, caption={thrsum.c}]
+// ######## Thredaed Deterministic Reducer ##########
+// thrsum
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <pthread.h>
+#include <stdint.h>
+
+#define E_USAGE "E_USAGE"
+#define E_RANGE "E_RANGE"
+#define E_THREAD "E_THREAD"
+#define E_MUTEX "E_MUTEX"
+
+long long N_val = 0;
+int num_threads = 0;
+long long total_sum = 0;
+pthread_mutex_t lock;
+
+typedef struct {
+    int id;
+    long long start;
+    long long end;
+} ThreadArgs;
+
+void print_error(const char *code, const char *msg) {
+    fprintf(stderr, "ERROR: %s: %s\n", code, msg);
+    exit(1);
+}
+
+void* worker(void* ptr) {
+    ThreadArgs* args = (ThreadArgs*)ptr;
+    long long local_sum = 0;
+    
+    for (long long i = args->start; i <= args->end; i++) {
+        local_sum += i;
+    }
+
+    if (pthread_mutex_lock(&lock) != 0) print_error(E_MUTEX, "lock failed");
+    total_sum += local_sum;
+    if (pthread_mutex_unlock(&lock) != 0) print_error(E_MUTEX, "unlock failed");
+
+    return NULL;
+}
+
+int main(int argc, char *argv[]) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--threads") == 0) {
+            if (i + 1 < argc) num_threads = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--n") == 0) {
+            if (i + 1 < argc) N_val = atoll(argv[++i]);
+        }
+    }
+
+    if (num_threads < 1 || num_threads > 32) print_error(E_RANGE, "threads must be in 1..32");
+    if (N_val < 1 || N_val > 1000000) print_error(E_RANGE, "n must be in 1..1000000");
+
+    if (pthread_mutex_init(&lock, NULL) != 0) print_error(E_MUTEX, "init failed");
+
+    pthread_t threads[32];
+    ThreadArgs args[32];
+
+    long long chunk = N_val / num_threads;
+    long long remainder = N_val % num_threads;
+    long long current_start = 1;
+
+    for (int i = 0; i < num_threads; i++) {
+        args[i].id = i;
+        args[i].start = current_start;
+        long long size = chunk + (i < remainder ? 1 : 0);
+        args[i].end = current_start + size - 1;
+        current_start += size;
+
+        if (pthread_create(&threads[i], NULL, worker, &args[i]) != 0) {
+            print_error(E_THREAD, "create failed");
+        }
+    }
+
+    for (int i = 0; i < num_threads; i++) {
+        if (pthread_join(threads[i], NULL) != 0) {
+            print_error(E_THREAD, "join failed");
+        }
+    }
+
+    pthread_mutex_destroy(&lock);
+    printf("OK: SUM %lld\n", total_sum);
+
+    return 0;
+}
+\end{lstlisting}
+
+\subsection{Sample Input and Output}
+
+\textbf{Case 1:}
+\begin{verbatim}
+$ ./thrsum --threads 1 --n 10
+OK: SUM 55
+\end{verbatim}
+
+\textbf{Case 2:}
+\begin{verbatim}
+$ ./thrsum --threads 4 --n 100
+OK: SUM 5050
+\end{verbatim}
